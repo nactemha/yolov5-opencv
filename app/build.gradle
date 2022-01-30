@@ -35,6 +35,13 @@ android {
     }
 
     ndkVersion '21.4.7075529'
+    sourceSets {
+        main {
+            jni {
+                srcDirs 'src\\main\\jni', 'src\\main\\jniLibs'
+            }
+        }
+    }
 }
 
 project.ext.ASSET_DIR = projectDir.toString() + '/src/main/assets'
@@ -50,6 +57,7 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite:2.4.0'
     implementation 'org.tensorflow:tensorflow-lite-gpu:2.4.0'
     implementation 'com.google.code.gson:gson:2.8.6'
+    implementation project(path: ':opencv')
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'

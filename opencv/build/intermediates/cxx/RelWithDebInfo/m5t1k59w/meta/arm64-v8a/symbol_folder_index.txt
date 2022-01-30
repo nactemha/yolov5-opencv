@@ -1,0 +1,1 @@
+D:\git\ahmetcancomtr\yolov5opencv\opencv\build\intermediates\cxx\RelWithDebInfo\m5t1k59w\obj\arm64-v8a

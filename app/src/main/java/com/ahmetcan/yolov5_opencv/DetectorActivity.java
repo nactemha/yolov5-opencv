@@ -42,6 +42,10 @@ import com.ahmetcan.yolov5_opencv.tflite.DetectorFactory;
 import com.ahmetcan.yolov5_opencv.tflite.YoloV5Classifier;
 import com.ahmetcan.yolov5_opencv.tracking.MultiBoxTracker;
 
+import org.opencv.android.BaseLoaderCallback;
+import org.opencv.android.LoaderCallbackInterface;
+import org.opencv.android.OpenCVLoader;
+
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
@@ -51,6 +55,9 @@ import java.util.List;
  * objects.
  */
 public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity implements OnImageAvailableListener {
+
+
+
     private static final Logger LOGGER = new Logger();
 
     private static final DetectorMode MODE = DetectorMode.TF_OD_API;
@@ -320,4 +327,33 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
     protected void setNumThreads(final int numThreads) {
         runInBackground(() -> detector.setNumThreads(numThreads));
     }
+
+    @Override
+    public synchronized void onResume() {
+        super.onResume();
+        if (!OpenCVLoader.initDebug()) {
+            Log.d("ahmetcancomtr OPENCV", "Internal OpenCV library not found. Using OpenCV Manager for initialization");
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, this, mLoaderCallback);
+        } else {
+            Log.d("ahmetcancomtr OPENCV", "OpenCV library found inside package. Using it!");
+            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
+        }
+    }
+
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
+        @Override
+        public void onManagerConnected(int status) {
+            switch (status) {
+                case LoaderCallbackInterface.SUCCESS:
+                {
+                    Log.i("ahmetcancomtr OPENCV", "OpenCV loaded successfully");
+
+                } break;
+                default:
+                {
+                    super.onManagerConnected(status);
+                } break;
+            }
+        }
+    };
 }
