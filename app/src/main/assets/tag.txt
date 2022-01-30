@@ -1,0 +1,5 @@
+tag.shelf
+tag.clothe
+price
+text
+upc
