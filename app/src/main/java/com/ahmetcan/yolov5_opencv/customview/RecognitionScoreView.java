@@ -22,7 +22,8 @@ import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.View;
 
-import com.ahmetcan.yolov5_opencv.tflite.Classifier.Recognition;
+
+import com.ahmetcan.yolov5_opencv.tflite.Detection;
 
 import java.util.List;
 
@@ -31,7 +32,7 @@ public class RecognitionScoreView extends View implements ResultsView {
   private final float textSizePx;
   private final Paint fgPaint;
   private final Paint bgPaint;
-  private List<Recognition> results;
+  private List<Detection> results;
 
   public RecognitionScoreView(final Context context, final AttributeSet set) {
     super(context, set);
@@ -47,7 +48,7 @@ public class RecognitionScoreView extends View implements ResultsView {
   }
 
   @Override
-  public void setResults(final List<Recognition> results) {
+  public void setResults(final List<Detection> results) {
     this.results = results;
     postInvalidate();
   }
@@ -60,7 +61,7 @@ public class RecognitionScoreView extends View implements ResultsView {
     canvas.drawPaint(bgPaint);
 
     if (results != null) {
-      for (final Recognition recog : results) {
+      for (final Detection recog : results) {
         canvas.drawText(recog.getTitle() + ": " + recog.getConfidence(), x, y, fgPaint);
         y += (int) (fgPaint.getTextSize() * 1.5f);
       }

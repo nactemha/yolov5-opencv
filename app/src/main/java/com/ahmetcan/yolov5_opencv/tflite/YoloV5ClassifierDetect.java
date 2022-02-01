@@ -25,7 +25,6 @@ import android.util.Log;
 
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.Tensor;
-import com.ahmetcan.yolov5_opencv.MainActivity;
 import com.ahmetcan.yolov5_opencv.env.Logger;
 import com.ahmetcan.yolov5_opencv.env.Utils;
 import org.tensorflow.lite.gpu.GpuDelegate;
@@ -194,6 +193,11 @@ public class YoloV5ClassifierDetect implements Classifier {
 //        if (tfLite != null) tfLite.setUseNNAPI(isChecked);
     }
 
+    @Override
+    public float getObjThresh() {
+        return 0.5f;
+    }
+
     private void recreateInterpreter() {
         if (tfLite != null) {
             tfLite.close();
@@ -217,11 +221,6 @@ public class YoloV5ClassifierDetect implements Classifier {
         nnapiDelegate = new NnApiDelegate();
         tfliteOptions.addDelegate(nnapiDelegate);
         recreateInterpreter();
-    }
-
-    @Override
-    public float getObjThresh() {
-        return MainActivity.MINIMUM_CONFIDENCE_TF_OD_API;
     }
 
     private static final Logger LOGGER = new Logger();
@@ -278,17 +277,17 @@ public class YoloV5ClassifierDetect implements Classifier {
     }
 
     //non maximum suppression
-    protected ArrayList<Recognition> nms(ArrayList<Recognition> list) {
-        ArrayList<Recognition> nmsList = new ArrayList<Recognition>();
+    protected ArrayList<Detection> nms(ArrayList<Detection> list) {
+        ArrayList<Detection> nmsList = new ArrayList<Detection>();
 
         for (int k = 0; k < labels.size(); k++) {
             //1.find max confidence per class
-            PriorityQueue<Recognition> pq =
-                    new PriorityQueue<Recognition>(
+            PriorityQueue<Detection> pq =
+                    new PriorityQueue<Detection>(
                             50,
-                            new Comparator<Recognition>() {
+                            new Comparator<Detection>() {
                                 @Override
-                                public int compare(final Recognition lhs, final Recognition rhs) {
+                                public int compare(final Detection lhs, final Detection rhs) {
                                     // Intentionally reversed to put high confidence at the head of the queue.
                                     return Float.compare(rhs.getConfidence(), lhs.getConfidence());
                                 }
@@ -303,14 +302,14 @@ public class YoloV5ClassifierDetect implements Classifier {
             //2.do non maximum suppression
             while (pq.size() > 0) {
                 //insert detection with max confidence
-                Recognition[] a = new Recognition[pq.size()];
-                Recognition[] detections = pq.toArray(a);
-                Recognition max = detections[0];
+                Detection[] a = new Detection[pq.size()];
+                Detection[] detections = pq.toArray(a);
+                Detection max = detections[0];
                 nmsList.add(max);
                 pq.clear();
 
                 for (int j = 1; j < detections.length; j++) {
-                    Recognition detection = detections[j];
+                    Detection detection = detections[j];
                     RectF b = detection.getLocation();
                     if (box_iou(max.getLocation(), b) < mNmsThresh) {
                         pq.add(detection);
@@ -356,7 +355,7 @@ public class YoloV5ClassifierDetect implements Classifier {
     protected static final int BATCH_SIZE = 1;
     protected static final int PIXEL_SIZE = 3;
 
-    public ArrayList<Recognition> recognizeImage(Bitmap bitmap) {
+    public ArrayList<Detection> recognizeImage(Bitmap bitmap) {
         Map<Integer, Object> outputMap = new HashMap<>();
 
         bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
@@ -387,7 +386,7 @@ public class YoloV5ClassifierDetect implements Classifier {
         Object[] inputArray = {imgData};
         tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
 
-        ArrayList<Recognition> detections = new ArrayList<Recognition>();
+        ArrayList<Detection> detections = new ArrayList<Detection>();
 
         for (int i = 0; i < OUTPUT_WIDTH.length; i++) {
             int gridWidth = OUTPUT_WIDTH[i];
@@ -456,7 +455,7 @@ public class YoloV5ClassifierDetect implements Classifier {
                                             Math.max(0, yPos - h / 2),
                                             Math.min(bitmap.getWidth() - 1, xPos + w / 2),
                                             Math.min(bitmap.getHeight() - 1, yPos + h / 2));
-                            detections.add(new Recognition("" + offset, labels.get(detectedClass),
+                            detections.add(new Detection("" + offset, labels.get(detectedClass),
                                     confidenceInClass, rect, detectedClass));
                         }
                     }
@@ -465,7 +464,7 @@ public class YoloV5ClassifierDetect implements Classifier {
             Log.d("YoloV5Classifier", "out[" + i + "] detect end");
         }
 
-        final ArrayList<Recognition> recognitions = nms(detections);
+        final ArrayList<Detection> recognitions = nms(detections);
 
         return recognitions;
     }

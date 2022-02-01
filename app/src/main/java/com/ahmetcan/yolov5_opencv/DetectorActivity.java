@@ -38,34 +38,59 @@ import com.ahmetcan.yolov5_opencv.env.BorderedText;
 import com.ahmetcan.yolov5_opencv.env.ImageUtils;
 import com.ahmetcan.yolov5_opencv.env.Logger;
 import com.ahmetcan.yolov5_opencv.tflite.Classifier;
+import com.ahmetcan.yolov5_opencv.tflite.Detection;
 import com.ahmetcan.yolov5_opencv.tflite.DetectorFactory;
 import com.ahmetcan.yolov5_opencv.tflite.YoloV5Classifier;
+import com.ahmetcan.yolov5_opencv.tracking.BoundingBox;
+import com.ahmetcan.yolov5_opencv.tracking.MOTracker;
 import com.ahmetcan.yolov5_opencv.tracking.MultiBoxTracker;
+import com.ahmetcan.yolov5_opencv.tracking.TrackerObject;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.android.Utils;
+import org.opencv.core.CvException;
+import org.opencv.core.CvType;
+import org.opencv.core.Mat;
+import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
+import org.opencv.tracking.TrackerCSRT;
+import org.opencv.tracking.TrackerKCF;
+import org.opencv.video.Tracker;
 
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
+
+import kotlin.Pair;
 
 /**
  * An activity that uses a TensorFlowMultiBoxDetector and ObjectTracker to detect and then track
  * objects.
  */
 public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity implements OnImageAvailableListener {
+    private Tracker mTracker;
 
 
 
     private static final Logger LOGGER = new Logger();
 
     private static final DetectorMode MODE = DetectorMode.TF_OD_API;
-    private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.6f;
     private static final boolean MAINTAIN_ASPECT = true;
     private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 640);
     private static final boolean SAVE_PREVIEW_BITMAP = false;
     private static final float TEXT_SIZE_DIP = 10;
+
+    private String mSelectedTracker = "TrackerKCF";
+    private MOTracker moTracker=null;
+    List<Detection> results=new LinkedList<Detection>();
+
+    private Object mutex=new Object();
+    private org.opencv.core.Rect2d mInitRectangle = null;
+    private Mat mImageGrabInit;
+
+
     OverlayView trackingOverlay;
     private Integer sensorOrientation;
 
@@ -76,7 +101,6 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
     private Bitmap croppedBitmap = null;
     private Bitmap cropCopyBitmap = null;
 
-    private boolean computingDetection = false;
 
     private long timestamp = 0;
 
@@ -96,12 +120,16 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
         borderedText.setTypeface(Typeface.MONOSPACE);
 
         tracker = new MultiBoxTracker(this);
+        moTracker=new MOTracker();
 
         final int modelIndex = modelView.getCheckedItemPosition();
         final String modelString = modelStrings.get(modelIndex);
 
         try {
             detector = DetectorFactory.getDetector(getAssets(), modelString);
+
+
+
         } catch (final IOException e) {
             e.printStackTrace();
             LOGGER.e(e, "Exception initializing classifier!");
@@ -138,9 +166,8 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
                 new DrawCallback() {
                     @Override
                     public void drawCallback(final Canvas canvas) {
-                        tracker.draw(canvas);
-                        if (isDebug()) {
-                            tracker.drawDebug(canvas);
+                        synchronized (moTracker){
+                            tracker.draw(canvas,moTracker.getTrackers(),results);
                         }
                     }
                 });
@@ -177,6 +204,7 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
             LOGGER.i("Changing model to " + modelString + " device " + device);
 
             // Try to load model.
+
 
             try {
                 detector = DetectorFactory.getDetector(getAssets(), modelString);
@@ -219,6 +247,7 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
         });
     }
 
+    TrackerObject track1=null;
     @Override
     protected void processImage() {
         ++timestamp;
@@ -226,13 +255,10 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
         trackingOverlay.postInvalidate();
 
         // No mutex needed as this method is not reentrant.
-        if (computingDetection) {
-            readyForNextImage();
-            return;
-        }
-        computingDetection = true;
+
         LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
 
+        //RGBA_8888
         rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
         readyForNextImage();
@@ -248,9 +274,24 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
                 new Runnable() {
                     @Override
                     public void run() {
+                        synchronized (moTracker) {
+                            moTracker.process(croppedBitmap);
+                        }
+                        /*if(track1==null){
+                            RectF location=new RectF(150f,150f,200f,200f);
+                            Detection result=new Detection("test","titletest",1f,location,0);
+                            Pair<Boolean, TrackerObject> newDetection = moTracker.new_detection(croppedBitmap, location.left, location.top, location.right, location.bottom, result, "TrackerKCF");
+                            if(newDetection.getFirst()){
+                                track1=newDetection.getSecond();
+
+                            }
+                        }*/
+
                         LOGGER.i("Running detection on image " + currTimestamp);
                         final long startTime = SystemClock.uptimeMillis();
-                        final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+                        synchronized (moTracker) {
+                             results = detector.recognizeImage(croppedBitmap);
+                        }
                         lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
                         Log.e("CHECK", "run: " + results.size());
@@ -262,32 +303,39 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
                         paint.setStyle(Style.STROKE);
                         paint.setStrokeWidth(2.0f);
 
-                        float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                        switch (MODE) {
-                            case TF_OD_API:
-                                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                                break;
+
+                            for (final Detection result : results) {
+                                if(result.getDetectedClass()!=1)
+                                    continue;
+                                //final RectF location =new RectF(0f,0f,500f,500f);//result.getLocation();
+                                final RectF location =result.getLocation();
+                                synchronized (moTracker) {
+                                    RectF location2 = new RectF(location);
+                                    cropToFrameTransform.mapRect(location2);
+                                    result.setDisplayLoc(location2);
+
+                                     moTracker.new_detection(croppedBitmap, location.left, location.top, location.right, location.bottom, result, "TrackerCSRT");//TrackerKCF TrackerCSRT
+                                }
+
                         }
 
-                        final List<Classifier.Recognition> mappedRecognitions =
-                                new LinkedList<Classifier.Recognition>();
+                        synchronized (moTracker) {
+                            List<TrackerObject> trackers = moTracker.getTrackers();
+                            for (final TrackerObject tracker : trackers) {
+                                RectF location1 = new RectF(tracker.getBoundingBox());
+                                cropToFrameTransform.mapRect(location1);
+                                tracker.setDisplayLoc(location1);
 
-                        for (final Classifier.Recognition result : results) {
-                            final RectF location = result.getLocation();
-                            if (location != null && result.getConfidence() >= minimumConfidence) {
-                                canvas.drawRect(location, paint);
-
-                                cropToFrameTransform.mapRect(location);
-
-                                result.setLocation(location);
-                                mappedRecognitions.add(result);
+                                RectF location2 = new RectF(tracker.detection.location);
+                                cropToFrameTransform.mapRect(location2);
+                                tracker.detection.setDisplayLoc(location2);
                             }
                         }
 
-                        tracker.trackResults(mappedRecognitions, currTimestamp);
-                        trackingOverlay.postInvalidate();
 
-                        computingDetection = false;
+
+                        //trackingOverlay.postInvalidate();
+
 
                         runOnUiThread(
                                 new Runnable() {
@@ -297,7 +345,7 @@ public class DetectorActivity extends com.ahmetcan.yolov5_opencv.CameraActivity 
                                         showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
                                         showInference(lastProcessingTimeMs + "ms");
                                     }
-                                });
+                          });
                     }
                 });
     }

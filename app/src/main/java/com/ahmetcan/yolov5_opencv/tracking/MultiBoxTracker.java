@@ -31,7 +31,7 @@ import android.util.TypedValue;
 import com.ahmetcan.yolov5_opencv.env.BorderedText;
 import com.ahmetcan.yolov5_opencv.env.ImageUtils;
 import com.ahmetcan.yolov5_opencv.env.Logger;
-import com.ahmetcan.yolov5_opencv.tflite.Classifier.Recognition;
+import com.ahmetcan.yolov5_opencv.tflite.Detection;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -61,8 +61,8 @@ public class MultiBoxTracker {
   final List<Pair<Float, RectF>> screenRects = new LinkedList<Pair<Float, RectF>>();
   private final Logger logger = new Logger();
   private final Queue<Integer> availableColors = new LinkedList<Integer>();
-  private final List<TrackedRecognition> trackedObjects = new LinkedList<TrackedRecognition>();
-  private final Paint boxPaint = new Paint();
+  private final Paint boxPaint1 = new Paint();
+  private final Paint boxPaint2 = new Paint();
   private final float textSizePx;
   private final BorderedText borderedText;
   private Matrix frameToCanvasMatrix;
@@ -75,12 +75,19 @@ public class MultiBoxTracker {
       availableColors.add(color);
     }
 
-    boxPaint.setColor(Color.RED);
-    boxPaint.setStyle(Style.STROKE);
-    boxPaint.setStrokeWidth(10.0f);
-    boxPaint.setStrokeCap(Cap.ROUND);
-    boxPaint.setStrokeJoin(Join.ROUND);
-    boxPaint.setStrokeMiter(100);
+    boxPaint1.setColor(Color.RED);
+    boxPaint1.setStyle(Style.STROKE);
+    boxPaint1.setStrokeWidth(10.0f);
+    boxPaint1.setStrokeCap(Cap.ROUND);
+    boxPaint1.setStrokeJoin(Join.ROUND);
+    boxPaint1.setStrokeMiter(100);
+
+    boxPaint2.setColor(Color.RED);
+    boxPaint2.setStyle(Style.STROKE);
+    boxPaint2.setStrokeWidth(10.0f);
+    boxPaint2.setStrokeCap(Cap.ROUND);
+    boxPaint2.setStrokeJoin(Join.ROUND);
+    boxPaint2.setStrokeMiter(100);
 
     textSizePx =
             TypedValue.applyDimension(
@@ -95,34 +102,12 @@ public class MultiBoxTracker {
     this.sensorOrientation = sensorOrientation;
   }
 
-  public synchronized void drawDebug(final Canvas canvas) {
-    final Paint textPaint = new Paint();
-    textPaint.setColor(Color.WHITE);
-    textPaint.setTextSize(60.0f);
-
-    final Paint boxPaint = new Paint();
-    boxPaint.setColor(Color.RED);
-    boxPaint.setAlpha(200);
-    boxPaint.setStyle(Style.STROKE);
-
-    for (final Pair<Float, RectF> detection : screenRects) {
-      final RectF rect = detection.second;
-      canvas.drawRect(rect, boxPaint);
-      canvas.drawText("" + detection.first, rect.left, rect.top, textPaint);
-      borderedText.drawText(canvas, rect.centerX(), rect.centerY(), "" + detection.first);
-    }
-  }
-
-  public synchronized void trackResults(final List<Recognition> results, final long timestamp) {
-    logger.i("Processing %d results from %d", results.size(), timestamp);
-    processResults(results);
-  }
 
   private Matrix getFrameToCanvasMatrix() {
     return frameToCanvasMatrix;
   }
 
-  public synchronized void draw(final Canvas canvas) {
+  public synchronized void draw(final Canvas canvas,final List<TrackerObject> trackedObjects,final List<Detection> detections) {
     final boolean rotated = sensorOrientation % 180 == 90;
     final float multiplier =
             Math.min(
@@ -136,79 +121,47 @@ public class MultiBoxTracker {
                     (int) (multiplier * (rotated ? frameWidth : frameHeight)),
                     sensorOrientation,
                     false);
-    for (final TrackedRecognition recognition : trackedObjects) {
-      final RectF trackedPos = new RectF(recognition.location);
+    for (final Detection detection : detections) {
+      final RectF trackedPos1 = new RectF(detection.getDisplayLoc());
 
-      getFrameToCanvasMatrix().mapRect(trackedPos);
-      boxPaint.setColor(recognition.color);
+      getFrameToCanvasMatrix().mapRect(trackedPos1);
+      int color1 = COLORS[detection.getDetectedClass() % COLORS.length ];
 
-      float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
-      canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
+      boxPaint1.setColor(color1);
 
-      final String labelString =
-              !TextUtils.isEmpty(recognition.title)
-                      ? String.format("%s %.2f", recognition.title, (100 * recognition.detectionConfidence))
-                      : String.format("%.2f", (100 * recognition.detectionConfidence));
-      //            borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.top,
+      float cornerSize1 = Math.min(trackedPos1.width(), trackedPos1.height()) / 8.0f;
+      //canvas.drawRoundRect(trackedPos1, cornerSize1, cornerSize1, boxPaint1);
+
+      final String labelString1 = String.format("%s: %s %.2f",  detection.getId(),detection.getTitle(), (100 * detection.getConfidence()));
+
       // labelString);
-      borderedText.drawText(
-              canvas, trackedPos.left + cornerSize, trackedPos.top, labelString + "%", boxPaint);
+     // borderedText.drawText(canvas, trackedPos1.left + cornerSize1, trackedPos1.top, labelString1 + "%", boxPaint1);
     }
+    for (final TrackerObject trackerObject : trackedObjects) {
+      final RectF trackedPos1 = new RectF(trackerObject.getDisplayLoc());
+     // final RectF trackedPos2 = new RectF(trackerObject.detection.getDisplayLoc());
+
+      getFrameToCanvasMatrix().mapRect(trackedPos1);
+     // getFrameToCanvasMatrix().mapRect(trackedPos2);
+      int color1 = COLORS[trackerObject.detection.getDetectedClass() % COLORS.length +1];
+      //int color2 = COLORS[trackerObject.detection.getDetectedClass() % COLORS.length +2];
+
+      boxPaint1.setColor(color1);
+     // boxPaint2.setColor(color2);
+
+      float cornerSize1 = Math.min(trackedPos1.width(), trackedPos1.height()) / 8.0f;
+    //  float cornerSize2 = Math.min(trackedPos2.width(), trackedPos2.height()) / 8.0f;
+      canvas.drawRoundRect(trackedPos1, cornerSize1, cornerSize1, boxPaint1);
+    //  canvas.drawRoundRect(trackedPos2, cornerSize2, cornerSize2, boxPaint2);
+
+      final String labelString1 = String.format("%s: %s %.2f",  trackerObject.getId(),trackerObject.detection.getTitle(), (100 * trackerObject.detection.getConfidence()));
+    //  final String labelString2 =String.format("%s %.2f", trackerObject.detection.getTitle(), (100 * trackerObject.detection.getConfidence()));
+
+      // labelString);
+      borderedText.drawText(canvas, trackedPos1.left + cornerSize1, trackedPos1.top, labelString1 + "%", boxPaint1);
+      //borderedText.drawText(canvas, trackedPos2.left + cornerSize2, trackedPos2.top, labelString2 + "%", boxPaint2);
+    }
+
   }
 
-  private void processResults(final List<Recognition> results) {
-    final List<Pair<Float, Recognition>> rectsToTrack = new LinkedList<Pair<Float, Recognition>>();
-
-    screenRects.clear();
-    final Matrix rgbFrameToScreen = new Matrix(getFrameToCanvasMatrix());
-
-    for (final Recognition result : results) {
-      if (result.getLocation() == null) {
-        continue;
-      }
-      final RectF detectionFrameRect = new RectF(result.getLocation());
-
-      final RectF detectionScreenRect = new RectF();
-      rgbFrameToScreen.mapRect(detectionScreenRect, detectionFrameRect);
-
-      logger.v(
-              "Result! Frame: " + result.getLocation() + " mapped to screen:" + detectionScreenRect);
-
-      screenRects.add(new Pair<Float, RectF>(result.getConfidence(), detectionScreenRect));
-
-      if (detectionFrameRect.width() < MIN_SIZE || detectionFrameRect.height() < MIN_SIZE) {
-        logger.w("Degenerate rectangle! " + detectionFrameRect);
-        continue;
-      }
-
-      rectsToTrack.add(new Pair<Float, Recognition>(result.getConfidence(), result));
-    }
-
-    trackedObjects.clear();
-    if (rectsToTrack.isEmpty()) {
-      logger.v("Nothing to track, aborting.");
-      return;
-    }
-
-    for (final Pair<Float, Recognition> potential : rectsToTrack) {
-      final TrackedRecognition trackedRecognition = new TrackedRecognition();
-      trackedRecognition.detectionConfidence = potential.first;
-      trackedRecognition.location = new RectF(potential.second.getLocation());
-      trackedRecognition.title = potential.second.getTitle();
-//      trackedRecognition.color = COLORS[trackedObjects.size() % COLORS.length];
-      trackedRecognition.color = COLORS[potential.second.getDetectedClass() % COLORS.length];
-      trackedObjects.add(trackedRecognition);
-
-//      if (trackedObjects.size() >= COLORS.length) {
-//        break;
-//      }
-    }
-  }
-
-  private static class TrackedRecognition {
-    RectF location;
-    float detectionConfidence;
-    int color;
-    String title;
-  }
 }

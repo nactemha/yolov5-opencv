@@ -15,10 +15,10 @@ limitations under the License.
 
 package com.ahmetcan.yolov5_opencv.customview;
 
-import com.ahmetcan.yolov5_opencv.tflite.Classifier.Recognition;
+import com.ahmetcan.yolov5_opencv.tflite.Detection;
 
 import java.util.List;
 
 public interface ResultsView {
-  public void setResults(final List<Recognition> results);
+  public void setResults(final List<Detection> results);
 }
